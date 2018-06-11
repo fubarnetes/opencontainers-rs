@@ -1,0 +1,23 @@
+[package]
+name = "opencontainers"
+version = "0.0.1"
+authors = ["Fabian Freyer <fabian.freyer@physik.tu-berlin.de>"]
+description = "OpenContainers Implementation in Rusr"
+license = "BSD-3-Clause"
+repository = "https://github.com/fubarnetes/opencontainers-rs"
+keywords = ["container"]
+categories = ["api-bindings"]
+
+[dependencies]
+log = "0.4.0"
+reqwest="*"
+www-authenticate="0.2.0"
+failure="0.1"
+chrono = { version = "0.4", features = ["serde"] }
+serde = "1.0"
+serde_json = "1.0"
+serde_derive = "1.0"
+ttl_cache = "0.4.2"
+
+[dev-dependencies]
+pretty_env_logger = "0.2.3"
