@@ -11,7 +11,7 @@ categories = ["api-bindings"]
 [dependencies]
 log = "0.4.0"
 reqwest="*"
-www-authenticate="0.2.0"
+www-authenticate="0.3.0"
 failure="0.1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = "1.0"
