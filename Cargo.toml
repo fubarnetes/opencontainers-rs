@@ -2,7 +2,7 @@
 name = "opencontainers"
 version = "0.0.1"
 authors = ["Fabian Freyer <fabian.freyer@physik.tu-berlin.de>"]
-description = "OpenContainers Implementation in Rusr"
+description = "OpenContainers Implementation in Rust"
 license = "BSD-3-Clause"
 repository = "https://github.com/fubarnetes/opencontainers-rs"
 keywords = ["container"]
