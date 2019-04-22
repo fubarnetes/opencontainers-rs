@@ -23,6 +23,9 @@ pub enum RegistryError {
 
     #[fail(display = "Manifest Error: {:?}", _0)]
     ManifestError(#[cause] crate::image::manifest::ManifestError),
+
+    #[fail(display = "Unsupported Manifest Schema: {:?}", _0)]
+    UnsupportedManifestSchema(crate::image::manifest::ManifestV2Schema),
 }
 
 /// Represents a Registry implementing the [OpenContainer Distribution

@@ -1,6 +1,8 @@
 use crate::distribution::{Registry, RegistryError};
+mod go;
 
 pub mod manifest;
+pub mod spec;
 pub use manifest::ManifestV2;
 
 #[derive(Debug)]

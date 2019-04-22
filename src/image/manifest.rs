@@ -90,6 +90,16 @@ impl From<ManifestV2> for ManifestV2Schema {
     }
 }
 
+impl From<&ManifestV2> for ManifestV2Schema {
+    fn from(manifest: &ManifestV2) -> Self {
+        match manifest {
+            ManifestV2::Schema1(_) => ManifestV2Schema::Schema1,
+            ManifestV2::Schema2(_) => ManifestV2Schema::Schema2,
+            ManifestV2::Schema2List(_) => ManifestV2Schema::Schema2List,
+        }
+    }
+}
+
 pub fn probe_manifest_v2_schema(data: &str) -> Result<ManifestV2Schema, ManifestError> {
     let manifest: ManifestSchemaOnlyV2 =
         serde_json::from_str(data).map_err(ManifestError::JsonError)?;
