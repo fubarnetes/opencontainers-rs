@@ -3,6 +3,7 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
 #[derive(Debug, Fail)]
+#[allow(clippy::large_enum_variant)]
 pub enum ManifestError {
     #[fail(display = "JSON Error: {:?}", _0)]
     JsonError(serde_json::Error),

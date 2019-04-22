@@ -7,6 +7,7 @@ use reqwest::{Client, StatusCode};
 use ttl_cache::TtlCache;
 
 #[derive(Debug, Fail)]
+#[allow(clippy::large_enum_variant)]
 pub enum RegistryError {
     #[fail(display = "Request Error: {:?}", _0)]
     ReqwestError(#[cause] reqwest::Error),
