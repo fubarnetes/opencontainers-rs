@@ -14,16 +14,14 @@ pub enum Credential {
 }
 
 pub trait Authenticate {
-    fn authenticate(&mut self, auth: &Credential) -> &mut Self;
+    fn authenticate(self, auth: &Credential) -> Self;
 }
 
 impl Authenticate for reqwest::RequestBuilder {
-    fn authenticate(&mut self, auth: &Credential) -> &mut Self {
+    fn authenticate(self, auth: &Credential) -> Self {
         match auth {
             Credential::Token(t) => self.bearer_auth(t),
-        };
-
-        self
+        }
     }
 }
 
@@ -101,7 +99,7 @@ impl Token {
                 "No Realm provided".into(),
             ))?;
 
-        let mut request = client.get(&realm);
+        let request = client.get(&realm);
 
         let mut query_params: Vec<(&str, &str)> = vec![];
 
@@ -147,6 +145,7 @@ pub fn do_challenge(
 ) -> Result<Vec<Credential>, RegistryError> {
     let raw: hyperx::header::Raw = authenticate.as_bytes().into();
     let challenges = WwwAuthenticate::parse_header(&raw)
+        .map_err(|_| RegistryError::InvalidAuthenticationChallenge(format!("{:?}", authenticate)))?
         .get::<BearerChallenge>()
         .ok_or(RegistryError::InvalidAuthenticationChallenge(
             "No Bearer Challenge provided".into(),

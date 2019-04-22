@@ -96,7 +96,7 @@ impl Registry {
         let mut request = self.client.get(url);
 
         if let Some(credential) = cred {
-            request.authenticate(&credential);
+            request = request.authenticate(&credential);
         } else {
             info!("Attempting unauthenticated request");
         }
@@ -125,7 +125,7 @@ impl Registry {
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
-    ///# let registry = Registry::new(<"https://registry-1.docker.io");
+    ///# let registry = Registry::new("https://registry-1.docker.io");
     /// let endpoint = format!("{}/v2/", registry.url);
     /// let response = registry.get(endpoint.as_str())
     ///     .expect("Could not perform API Version Check");
