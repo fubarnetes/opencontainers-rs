@@ -8,6 +8,7 @@ pub use manifest::ManifestV2;
 #[derive(Debug)]
 pub struct Image<'a> {
     registry: &'a Registry,
+    name: String,
     manifest: ManifestV2,
 }
 
@@ -25,6 +26,8 @@ impl<'a> Image<'a> {
     ///     .expect("Could not get image");
     /// ```
     pub fn new(registry: &'a Registry, name: &str, reference: &str) -> Result<Self, RegistryError> {
+        let name = name.to_owned();
+
         let url = format!("{}/v2/{}/manifests/{}", registry.url, name, reference);
 
         // Make sure we only accept schema 2, if we don't set this, we will get
@@ -48,7 +51,11 @@ impl<'a> Image<'a> {
             .parse()
             .map_err(RegistryError::ManifestError)?;
 
-        Ok(Self { registry, manifest })
+        Ok(Self {
+            registry,
+            name,
+            manifest,
+        })
     }
 
     /// Return an image manifest
