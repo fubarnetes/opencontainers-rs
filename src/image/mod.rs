@@ -3,8 +3,8 @@ mod go;
 
 pub mod manifest;
 pub mod spec;
-pub use manifest::ManifestV2;
 use manifest::Digest;
+pub use manifest::ManifestV2;
 
 #[derive(Debug)]
 pub struct Image<'a> {
@@ -75,13 +75,9 @@ impl<'a> Image<'a> {
     }
 
     pub fn get_blob(&self, digest: &Digest) -> Result<String, RegistryError> {
-        let url = format!(
-            "{}/v2/{}/blobs/{}",
-            self.registry.url, self.name, digest
-        );
+        let url = format!("{}/v2/{}/blobs/{}", self.registry.url, self.name, digest);
 
-        self
-            .registry
+        self.registry
             .get(&url, None)?
             .text()
             .map_err(RegistryError::ReqwestError)
@@ -99,6 +95,8 @@ impl<'a> Image<'a> {
             _ => unreachable!(),
         };
 
-        self.get_blob(config_digest)?.parse().map_err(RegistryError::ImageSpecError)
+        self.get_blob(config_digest)?
+            .parse()
+            .map_err(RegistryError::ImageSpecError)
     }
 }

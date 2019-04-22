@@ -134,7 +134,7 @@ pub struct ConfigV1 {
 
     /// The field contains the system call signal that will be sent to the
     /// container to exit. The signal can be a signal name in the format
-        /// SIGNAME, for instance SIGKILL rSIGTMIN+3.
+    /// SIGNAME, for instance SIGKILL rSIGTMIN+3.
     #[serde(rename = "StopSignal")]
     stop_signal: Option<String>,
 }

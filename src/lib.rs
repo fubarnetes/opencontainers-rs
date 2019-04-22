@@ -26,4 +26,4 @@ pub mod image;
 pub use image::Image;
 
 pub mod runtime;
-pub use runtime::{RuntimeConfig, Bundle};
+pub use runtime::{Bundle, RuntimeConfig};
