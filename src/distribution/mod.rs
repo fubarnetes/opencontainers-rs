@@ -1,7 +1,7 @@
 mod auth;
 use auth::{Authenticate, Credential};
 
-use crate::{image::Image, image::manifest::ManifestV2};
+use crate::{image::manifest::ManifestV2, image::Image};
 
 use reqwest::{Client, StatusCode};
 use ttl_cache::TtlCache;

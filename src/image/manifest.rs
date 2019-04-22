@@ -1,3 +1,5 @@
+use pest::Parser;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::str::FromStr;
 
 #[derive(Debug, Fail)]
@@ -10,6 +12,12 @@ pub enum ManifestError {
 
     #[fail(display = "Invalid (unknown) Media Type: {}", _0)]
     InvalidMediaType(String),
+
+    #[fail(display = "Parsing digest failed: '{}' ({:?})", _0, _1)]
+    DigestParseFailed(String, #[cause] pest::error::Error<Rule>),
+
+    #[fail(display = "Invalid digest algorithm: {}", _0)]
+    InvalidDigestAlgorithm(String),
 }
 
 /// Helper struct to determine Image Manifest Schema.
@@ -112,10 +120,123 @@ pub fn probe_manifest_v2_schema(data: &str) -> Result<ManifestV2Schema, Manifest
     }
 }
 
+#[derive(Parser)]
+#[grammar = "image/digest.pest"]
+struct DigestParser;
+
+/// A digest used for content addressability.
+///
+/// # Spec
+///
+/// > A digest is a serialized hash result, consisting of a algorithm and hex
+/// > portion. The algorithm identifies the methodology used to calculate the
+/// > digest. The hex portion is the hex-encoded result of the hash.
+///
+/// # Example
+///
+/// ```
+///# use opencontainers::image::manifest::Digest;
+/// let digest: Digest = "sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b".parse()
+///     .expect("parsing digest failed!");
+/// assert_eq!(&digest.to_string(), "sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b")
+/// ```
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub struct Digest {
+    pub algorithm: DigestAlgorithm,
+    pub hex: String,
+}
+
+impl std::fmt::Display for Digest {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{}", self.algorithm, self.hex)
+    }
+}
+
+impl std::str::FromStr for Digest {
+    type Err = ManifestError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut digest = DigestParser::parse(Rule::digest, s)
+            .map_err(|e| ManifestError::DigestParseFailed(s.into(), e))?
+            .next()
+            .unwrap() // Can never fail because we have at least one result
+            .into_inner()
+            .map(|t| t.as_str().to_owned());
+        let algorithm: DigestAlgorithm = digest.next().unwrap().parse()?;
+        let hex = digest.next().unwrap();
+        Ok(Self { algorithm, hex })
+    }
+}
+
+impl<'de> Deserialize<'de> for Digest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for Digest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Hash)]
+pub enum DigestAlgorithm {
+    Sha256,
+}
+
+impl std::fmt::Display for DigestAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            DigestAlgorithm::Sha256 => write!(f, "sha256"),
+        }
+    }
+}
+
+impl std::str::FromStr for DigestAlgorithm {
+    type Err = ManifestError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "sha256" => Ok(DigestAlgorithm::Sha256),
+            other => Err(ManifestError::InvalidDigestAlgorithm(other.into())),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DigestAlgorithm {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for DigestAlgorithm {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FsLayerV2_1 {
     #[serde(rename = "blobSum")]
-    inner: String,
+    inner: Digest,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -154,7 +275,7 @@ pub struct ConfigV2_2 {
 
     /// The digest of the content, as defined by the [Registry V2 HTTP API
     /// Specificiation](https://docs.docker.com/registry/spec/api/#digest-parameter).
-    digest: String,
+    digest: Digest,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -177,7 +298,7 @@ pub struct LayerV2_2 {
 
     /// The digest of the content, as defined by the [Registry V2 HTTP API
     /// Specificiation](https://docs.docker.com/registry/spec/api/#digest-parameter).
-    digest: String,
+    digest: Digest,
 
     /// Provides a list of URLs from which the content may be fetched.
     ///
@@ -263,7 +384,7 @@ pub struct ManifestListEntryV2_2 {
 
     /// The digest of the content, as defined by the [Registry V2 HTTP API
     /// Specificiation](https://docs.docker.com/registry/spec/api/#digest-parameter).
-    digest: String,
+    digest: Digest,
 
     /// The platform object describes the platform which the image in the
     /// manifest runs on. A full list of valid operating system and architecture
@@ -333,9 +454,10 @@ mod tests {
             "application/vnd.docker.container.image.v1+json"
         );
         assert_eq!(manifest.config.size, 7023);
+        assert_eq!(manifest.config.digest.algorithm, DigestAlgorithm::Sha256);
         assert_eq!(
-            manifest.config.digest,
-            "sha256:b5b2b2c507a0944348e0303114d8d93aaaa081732b86451d9bce1f432a537bc7"
+            manifest.config.digest.hex,
+            "b5b2b2c507a0944348e0303114d8d93aaaa081732b86451d9bce1f432a537bc7"
         );
 
         assert_eq!(manifest.layers.len(), 3);
@@ -346,7 +468,8 @@ mod tests {
                 media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
                 size: 32654,
                 digest: "sha256:e692418e4cbaf90ca69d05a66403747baa33ee08806650b51fab815ad7fc331f"
-                    .into(),
+                    .parse()
+                    .expect("Could not parse reference digest"),
                 urls: None,
             }
         );
@@ -357,7 +480,8 @@ mod tests {
                 media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
                 size: 16724,
                 digest: "sha256:3c3a4604a545cdc127456d94e421cd355bca5b528f4a9c1905b15da2eb4a4c6b"
-                    .into(),
+                    .parse()
+                    .expect("Could not parse reference digest"),
                 urls: None,
             }
         );
@@ -368,7 +492,8 @@ mod tests {
                 media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
                 size: 73109,
                 digest: "sha256:ec4b8955958665577945c89419d1af06b5f7636b4ac3da7f12184802ad867736"
-                    .into(),
+                    .parse()
+                    .expect("Could not parse reference digest"),
                 urls: None,
             }
         );
@@ -493,4 +618,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_parse_digest() {
+        let test_data = "sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b";
+        let digest: Digest = test_data.parse().expect("Could not parse digest");
+
+        assert_eq!(digest.algorithm, DigestAlgorithm::Sha256);
+        assert_eq!(
+            digest.hex,
+            "6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b"
+        );
+        assert_eq!(&digest.to_string(), test_data)
+    }
+
+    #[test]
+    fn test_parse_digest_fail() {
+        "foobar"
+            .parse::<Digest>()
+            .expect_err("parsing of string without : succeeded");
+        "a::deadbeef"
+            .parse::<Digest>()
+            .expect_err("digest with multiple : succeeded");
+        "sha256:xxxyyyzzz"
+            .parse::<Digest>()
+            .expect_err("parsing digest with non-hex string succeeded");
+    }
 }

@@ -1,5 +1,6 @@
 extern crate chrono;
 extern crate hyperx;
+extern crate pest;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
@@ -11,6 +12,9 @@ extern crate failure;
 
 #[macro_use]
 extern crate log;
+
+#[macro_use]
+extern crate pest_derive;
 
 #[macro_use]
 extern crate serde_derive;

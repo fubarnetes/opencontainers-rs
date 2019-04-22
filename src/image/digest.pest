@@ -1,0 +1,5 @@
+digest = ${ algorithm ~ ":" ~ hex }
+
+algorithm  = { ( ASCII_ALPHANUMERIC | "_" | "+" | "." | "-" ) + }
+
+hex = { ASCII_HEX_DIGIT + }
