@@ -1,11 +1,10 @@
+use crate::distribution::RegistryError;
+
 use chrono::{DateTime, Utc};
 use hyperx::header::Header;
+use reqwest::{self, Client};
 use www_authenticate::{RawChallenge, WwwAuthenticate};
 
-use reqwest;
-use reqwest::Client;
-
-use crate::RegistryError;
 use std::fmt;
 
 #[derive(Debug, PartialEq)]
