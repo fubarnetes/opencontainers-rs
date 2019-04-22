@@ -4,6 +4,7 @@ mod go;
 pub mod manifest;
 pub mod spec;
 pub use manifest::ManifestV2;
+use manifest::Digest;
 
 #[derive(Debug)]
 pub struct Image<'a> {
@@ -71,5 +72,18 @@ impl<'a> Image<'a> {
     /// ```
     pub fn manifest(&self) -> &ManifestV2 {
         &self.manifest
+    }
+
+    pub fn get_blob(&self, digest: &Digest) -> Result<String, RegistryError> {
+        let url = format!(
+            "{}/v2/{}/blobs/{}",
+            self.registry.url, self.name, digest
+        );
+
+        self
+            .registry
+            .get(&url, None)?
+            .text()
+            .map_err(RegistryError::ReqwestError)
     }
 }
