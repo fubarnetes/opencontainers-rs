@@ -195,7 +195,19 @@ impl Registry {
     /// ```
     pub fn manifest(&self, name: &str, reference: &str) -> Result<ManifestV2, RegistryError> {
         let url = format!("{}/v2/{}/manifests/{}", self.url, name, reference);
-        self.get(&url, None)?
+
+        // Make sure we only accept schema 2, if we don't set this, we will get
+        // schema1 by default.
+        // For now, do not support Manifest Lists.
+        let accept_types = vec![
+            "application/vnd.oci.distribution.manifest.v2+json",
+            "application/vnd.docker.distribution.manifest.v2+json",
+            ];
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::ACCEPT, accept_types.join(",").parse().unwrap());
+
+        self.get(&url, Some(&headers))?
             .text()
             .map_err(RegistryError::ReqwestError)?
             .parse()
