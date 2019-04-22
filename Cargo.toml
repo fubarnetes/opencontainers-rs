@@ -11,7 +11,7 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.0"
-reqwest="*"
+reqwest="0.9"
 www-authenticate="0.3.0"
 failure="0.1"
 chrono = { version = "0.4", features = ["serde"] }
