@@ -1,6 +1,6 @@
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Filesystem Bundle
 ///
@@ -400,6 +400,76 @@ pub struct State {
     /// annotations were provided then this property MAY either be absent or an
     /// empty map.
     annotations: Option<HashMap<String, String>>,
+}
+
+/// An OCI runtime will have to implement this trait.
+pub trait Runtime {
+    type Err;
+
+    /// Query State
+    ///
+    /// This operation MUST generate an error if it is not provided the ID of a
+    /// container. Attempting to query a container that does not exist MUST
+    /// generate an error. This operation MUST return the state of a container
+    /// as specified in the State section.
+    fn state(&self) -> Result<State, Self::Err>;
+
+    /// Create
+    ///
+    /// This operation MUST generate an error if it is not provided a path to
+    /// the bundle and the container ID to associate with the container. If the
+    /// ID provided is not unique across all containers within the scope of the
+    /// runtime, or is not valid in any other way, the implementation MUST
+    /// generate an error and a new container MUST NOT be created. This
+    /// operation MUST create a new container.
+    ///
+    /// All of the properties configured in `config.json` except for `process`
+    /// MUST be applied. `process.args` MUST NOT be applied until triggered by
+    /// the start operation. The remaining `process` properties MAY be applied
+    /// by this operation. If the runtime cannot apply a property as specified
+    /// in the configuration, it MUST generate an error and a new container
+    /// MUST NOT be created.
+    ///
+    /// The runtime MAY validate `config.json` against this spec, either
+    /// generically or with respect to the local system capabilities, before
+    /// creating the container (step 2). Runtime callers who are interested
+    /// in pre-create validation can run bundle-validation tools before invoking
+    /// the create operation.
+    ///
+    /// Any changes made to the `config.json` file after this operation will not
+    /// have an effect on the container.
+    fn create(&mut self, path_to_bundle: Path) -> Result<(), Self::Err>;
+
+    /// Start
+    ///
+    /// This operation MUST generate an error if it is not provided th
+    ///container ID. Attempting to [start] a container that is not
+    /// [RuntimeState::Created] MUST have no effect on the container and MUST
+    /// generate an error. This operation MUST run the user-specified program as
+    /// specified by `process`. This operation MUST generate an error if
+    /// `process` was not set.
+    fn start(&mut self) -> Result<(), Self::Err>;
+
+    /// Kill
+    ///
+    /// This operation MUST generate an error if it is not provided the
+    /// container ID. Attempting to send a signal to a container that is neither
+    /// [RuntimeState::Created] nor [RuntimeState::Running] MUST have no effect
+    /// on the container and MUST generate an error. This operation MUST send
+    /// the specified signal to the container process.
+    // FIXME: use better signal type here
+    fn kill(&mut self, signal: u16) -> Result<(), Self::Err>;
+
+    /// Delete
+    ///
+    /// This operation MUST generate an error if it is not provided the
+    /// container ID. Attempting to [delete] a container that is not
+    /// [RuntimeState::Stopped] MUST have no effect on the container and MUST
+    /// generate an error. Deleting a container MUST delete the resources that
+    /// were created during the create step. Note that resources associated with
+    /// the container, but not created by this container, MUST NOT be deleted.
+    /// Once a container is deleted its ID MAY be used by a subsequent container.
+    fn delete(self) -> Result<(), Self::Err>;
 }
 
 #[cfg(test)]

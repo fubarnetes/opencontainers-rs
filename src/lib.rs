@@ -28,4 +28,4 @@ pub mod image;
 pub use image::Image;
 
 pub mod runtime;
-pub use runtime::{Bundle, RuntimeConfig};
+pub use runtime::{Bundle, Runtime, RuntimeConfig};
