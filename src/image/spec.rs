@@ -1,6 +1,13 @@
 pub use super::go::{GoArch, GoOs};
 use std::collections::HashMap;
 
+#[derive(Debug, Fail)]
+#[allow(clippy::large_enum_variant)]
+pub enum ImageSpecError {
+    #[fail(display = "JSON Error: {:?}", _0)]
+    JsonError(serde_json::Error),
+}
+
 /// Image structure.
 ///
 /// # Spec
@@ -49,6 +56,14 @@ pub struct ImageV1 {
     /// Describes the history of each layer. The array is ordered from first to
     /// last.
     history: Option<Vec<HistoryV1>>,
+}
+
+impl std::str::FromStr for ImageV1 {
+    type Err = ImageSpecError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s).map_err(ImageSpecError::JsonError)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -12,4 +12,5 @@ fn main() {
         .expect("Could not get image");
 
     println!("{:#?}", image.manifest());
+    println!("{:#?}", image.config());
 }

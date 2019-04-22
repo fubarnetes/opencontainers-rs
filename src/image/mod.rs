@@ -86,4 +86,19 @@ impl<'a> Image<'a> {
             .text()
             .map_err(RegistryError::ReqwestError)
     }
+
+    /// Return the image runtime configuration
+    pub fn config(&self) -> Result<spec::ImageV1, RegistryError> {
+        match manifest::ManifestV2Schema::from(self.manifest()) {
+            manifest::ManifestV2Schema::Schema2 => {}
+            other => return Err(RegistryError::UnsupportedManifestSchema(other)),
+        };
+
+        let config_digest = match self.manifest() {
+            ManifestV2::Schema2(m) => m.config.digest(),
+            _ => unreachable!(),
+        };
+
+        self.get_blob(config_digest)?.parse().map_err(RegistryError::ImageSpecError)
+    }
 }
