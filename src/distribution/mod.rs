@@ -86,9 +86,14 @@ impl Registry {
     fn attempt_request(
         &self,
         url: &str,
+        headers: Option<&reqwest::header::HeaderMap>,
         cred: Option<&Credential>,
     ) -> Result<Result<reqwest::Response, reqwest::Response>, RegistryError> {
         let mut request = self.client.get(url);
+
+        if let Some(headers) = headers {
+            request = request.headers(headers.clone());
+        }
 
         if let Some(credential) = cred {
             request = request.authenticate(&credential);
@@ -122,16 +127,20 @@ impl Registry {
     ///# use opencontainers::Registry;
     ///# let registry = Registry::new("https://registry-1.docker.io");
     /// let endpoint = format!("{}/v2/", registry.url);
-    /// let response = registry.get(endpoint.as_str())
+    /// let response = registry.get(endpoint.as_str(), None)
     ///     .expect("Could not perform API Version Check");
     /// assert!(response.status().is_success());
     /// ```
-    pub fn get(&self, url: &str) -> Result<reqwest::Response, RegistryError> {
+    pub fn get(
+        &self,
+        url: &str,
+        headers: Option<&reqwest::header::HeaderMap>,
+    ) -> Result<reqwest::Response, RegistryError> {
         // Try to use the credential if it is cached
         let credential = self.credential_cache.get(url);
 
         // Attempt request
-        let response = match self.attempt_request(url, credential)? {
+        let response = match self.attempt_request(url, headers, credential)? {
             Ok(response) => return Ok(response),
             Err(response) => response,
         };
@@ -163,7 +172,7 @@ impl Registry {
 
         // Attempt with each credential we got
         for credential in credentials {
-            if let Ok(response) = self.attempt_request(url, Some(&credential))? {
+            if let Ok(response) = self.attempt_request(url, headers, Some(&credential))? {
                 info!("Got response: {:?}", response);
 
                 // TODO: Cache credential.
@@ -186,7 +195,7 @@ impl Registry {
     /// ```
     pub fn manifest(&self, name: &str, reference: &str) -> Result<ManifestV2, RegistryError> {
         let url = format!("{}/v2/{}/manifests/{}", self.url, name, reference);
-        self.get(&url)?
+        self.get(&url, None)?
             .text()
             .map_err(RegistryError::ReqwestError)?
             .parse()
