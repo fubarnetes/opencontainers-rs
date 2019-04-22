@@ -19,7 +19,7 @@ impl<'a> Image<'a> {
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let image = opencontainers::Image::new(&registry, "hello-world", "latest")
+    /// let image = opencontainers::Image::new(&registry, "library/hello-world", "latest")
     ///     .expect("Could not get image");
     /// ```
     pub fn new(registry: &'a Registry, name: &str, reference: &str) -> Result<Self, RegistryError> {
@@ -34,7 +34,7 @@ impl<'a> Image<'a> {
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let manifest = registry.image("hello-world", "latest")
+    /// let manifest = registry.image("library/hello-world", "latest")
     ///     .expect("Could not get image")
     ///     .manifest();
     /// ```

@@ -180,11 +180,11 @@ impl Registry {
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let manifest = registry.manifest("hello-world", "latest")
+    /// let manifest = registry.manifest("library/hello-world", "latest")
     ///     .expect("Could not get Manifest");
     /// ```
     pub fn manifest(&self, name: &str, reference: &str) -> Result<ManifestV2, RegistryError> {
-        let url = format!("{}/v2/library/{}/manifests/{}", self.url, name, reference);
+        let url = format!("{}/v2/{}/manifests/{}", self.url, name, reference);
         self.get(&url)?
             .text()
             .map_err(RegistryError::ReqwestError)?
@@ -199,7 +199,7 @@ impl Registry {
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let manifest = registry.image("hello-world", "latest")
+    /// let manifest = registry.image("library/hello-world", "latest")
     ///     .expect("Could not get image");
     /// ```
     pub fn image(&self, name: &str, reference: &str) -> Result<Image, RegistryError> {
