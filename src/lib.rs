@@ -76,8 +76,8 @@ impl Registry {
 
         Registry {
             url: url.into(),
-            client: client,
-            credential_cache: credential_cache,
+            client,
+            credential_cache,
         }
     }
 
@@ -101,7 +101,7 @@ impl Registry {
             info!("Attempting unauthenticated request");
         }
 
-        let response = request.send().map_err(|e| RegistryError::ReqwestError(e))?;
+        let response = request.send().map_err(RegistryError::ReqwestError)?;
 
         let status = response.status();
 
@@ -111,7 +111,7 @@ impl Registry {
             return Ok(Ok(response));
         }
 
-        return Ok(Err(response));
+        Ok(Err(response))
     }
 
     /// Perform a GET request on the Registry, handling authentication.
@@ -156,6 +156,7 @@ impl Registry {
         }
 
         info!("Authentication required");
+        #[allow(clippy::or_fun_call)]
         let authenticate = response
             .headers()
             .get(reqwest::header::WWW_AUTHENTICATE)
@@ -192,9 +193,7 @@ impl Registry {
         let url = format!("{}/v2/library/{}/manifests/{}", self.url, name, reference);
         let mut response = self.get(&url)?;
 
-        let manifest = response
-            .text()
-            .map_err(|e| RegistryError::ReqwestError(e))?;
+        let manifest = response.text().map_err(RegistryError::ReqwestError)?;
 
         Ok(manifest)
     }

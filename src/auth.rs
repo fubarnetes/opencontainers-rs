@@ -43,9 +43,12 @@ impl www_authenticate::Challenge for BearerChallenge {
             RawChallenge::Fields(mut map) => {
                 let realm = map.remove("realm");
                 let service = map.remove("service");
-                let scopes: Option<Vec<String>> = map
-                    .remove("scope")
-                    .map(|scopes| scopes.split(" ").map(|s| s.to_string()).collect());
+                let scopes: Option<Vec<String>> = map.remove("scope").map(|scopes| {
+                    scopes
+                        .split(' ')
+                        .map(std::string::ToString::to_string)
+                        .collect()
+                });
 
                 Some(BearerChallenge {
                     realm,
@@ -92,6 +95,7 @@ pub struct Token {
 
 impl Token {
     fn get(client: &Client, chall: &BearerChallenge) -> Result<Token, RegistryError> {
+        #[allow(clippy::or_fun_call)]
         let realm = chall
             .realm
             .clone()
@@ -118,16 +122,14 @@ impl Token {
 
         let request = request.query(&query_params);
 
-        let mut response = request.send().map_err(|e| RegistryError::ReqwestError(e))?;
+        let mut response = request.send().map_err(RegistryError::ReqwestError)?;
 
         let status = response.status();
         if !status.is_success() {
             return Err(RegistryError::CouldNotGetToken(status));
         }
 
-        let token: Token = response
-            .json()
-            .map_err(|e| RegistryError::ReqwestError(e))?;
+        let token: Token = response.json().map_err(RegistryError::ReqwestError)?;
 
         Ok(token)
     }
@@ -144,6 +146,8 @@ pub fn do_challenge(
     authenticate: &reqwest::header::HeaderValue,
 ) -> Result<Vec<Credential>, RegistryError> {
     let raw: hyperx::header::Raw = authenticate.as_bytes().into();
+
+    #[allow(clippy::or_fun_call)]
     let challenges = WwwAuthenticate::parse_header(&raw)
         .map_err(|_| RegistryError::InvalidAuthenticationChallenge(format!("{:?}", authenticate)))?
         .get::<BearerChallenge>()
@@ -154,8 +158,8 @@ pub fn do_challenge(
     let auths: Vec<Credential> = challenges
         .iter()
         .map(|c| Token::get(&client, c))
-        .filter_map(|r| r.ok())
-        .map(|token| Credential::Token(token))
+        .filter_map(Result::ok)
+        .map(Credential::Token)
         .collect();
 
     info!("got credentials: {:?}", auths);
