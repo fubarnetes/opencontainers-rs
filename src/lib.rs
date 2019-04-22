@@ -23,7 +23,8 @@ use ttl_cache::TtlCache;
 mod auth;
 use auth::{Authenticate, Credential};
 
-mod manifest;
+pub mod manifest;
+pub use manifest::ManifestV2;
 
 #[derive(Debug, Fail)]
 pub enum RegistryError {
@@ -38,6 +39,9 @@ pub enum RegistryError {
 
     #[fail(display = "Could not authenticate")]
     CouldNotAuthenticate,
+
+    #[fail(display = "Manifest Error: {:?}", _0)]
+    ManifestError(#[cause] manifest::ManifestError),
 }
 
 /// Represents a Registry implementing the [OpenContainer Distribution
@@ -189,12 +193,12 @@ impl Registry {
     /// let manifest = registry.manifest("hello-world", "latest")
     ///     .expect("Could not get Manifest");
     /// ```
-    pub fn manifest(&self, name: &str, reference: &str) -> Result<String, RegistryError> {
+    pub fn manifest(&self, name: &str, reference: &str) -> Result<ManifestV2, RegistryError> {
         let url = format!("{}/v2/library/{}/manifests/{}", self.url, name, reference);
-        let mut response = self.get(&url)?;
-
-        let manifest = response.text().map_err(RegistryError::ReqwestError)?;
-
-        Ok(manifest)
+        self.get(&url)?
+            .text()
+            .map_err(RegistryError::ReqwestError)?
+            .parse()
+            .map_err(RegistryError::ManifestError)
     }
 }

@@ -1,3 +1,117 @@
+use std::str::FromStr;
+
+#[derive(Debug, Fail)]
+pub enum ManifestError {
+    #[fail(display = "JSON Error: {:?}", _0)]
+    JsonError(serde_json::Error),
+
+    #[fail(display = "Invalid Schema Version: {}", _0)]
+    InvalidSchemaVersion(u64),
+
+    #[fail(display = "Invalid (unknown) Media Type: {}", _0)]
+    InvalidMediaType(String),
+}
+
+/// Helper struct to determine Image Manifest Schema.
+#[derive(Debug, Deserialize)]
+struct ManifestSchemaOnlyV2 {
+    #[serde(rename = "schemaVersion")]
+    schema: u64,
+}
+
+impl ManifestSchemaOnlyV2 {
+    // Return the schema version.
+    pub fn schema(&self) -> u64 {
+        self.schema
+    }
+}
+
+#[derive(Debug, Deserialize)]
+// Helper struct to determine Schema 2 Image Manifest media type
+struct ManifestMediaTypeOnlyV2_2 {
+    /// The MIME type of the referenced object. This should generally be
+    /// `application/vnd.docker.container.image.v1+json`.
+    #[serde(rename = "mediaType")]
+    media_type: String,
+}
+
+impl ManifestMediaTypeOnlyV2_2 {
+    // Return the schema version.
+    pub fn media_type(&self) -> &str {
+        &self.media_type
+    }
+}
+
+/// Enum of Manifest structs for each schema version.
+#[derive(Debug)]
+pub enum ManifestV2 {
+    Schema1(ManifestV2_1),
+    Schema2(ManifestV2_2),
+    Schema2List(ManifestListV2_2),
+}
+
+impl FromStr for ManifestV2 {
+    type Err = ManifestError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match probe_manifest_v2_schema(s)? {
+            ManifestV2Schema::Schema1 => serde_json::from_str(s).map(ManifestV2::Schema1),
+            ManifestV2Schema::Schema2 => serde_json::from_str(s).map(ManifestV2::Schema2),
+            ManifestV2Schema::Schema2List => serde_json::from_str(s).map(ManifestV2::Schema2List),
+        }
+        .map_err(ManifestError::JsonError)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+/// Discriminants for ManifestV2
+pub enum ManifestV2Schema {
+    Schema1,
+    Schema2,
+    Schema2List,
+}
+
+impl From<ManifestV2> for ManifestV2Schema {
+    fn from(manifest: ManifestV2) -> Self {
+        match manifest {
+            ManifestV2::Schema1(_) => ManifestV2Schema::Schema1,
+            ManifestV2::Schema2(_) => ManifestV2Schema::Schema2,
+            ManifestV2::Schema2List(_) => ManifestV2Schema::Schema2List,
+        }
+    }
+}
+
+pub fn probe_manifest_v2_schema(data: &str) -> Result<ManifestV2Schema, ManifestError> {
+    let manifest: ManifestSchemaOnlyV2 =
+        serde_json::from_str(data).map_err(ManifestError::JsonError)?;
+
+    match manifest.schema() {
+        1 => return Ok(ManifestV2Schema::Schema1),
+        2 => {}
+        schema => return Err(ManifestError::InvalidSchemaVersion(schema)),
+    };
+
+    let manifest: ManifestMediaTypeOnlyV2_2 =
+        serde_json::from_str(data).map_err(ManifestError::JsonError)?;
+
+    let media_type = manifest.media_type();
+
+    #[allow(clippy::or_fun_call)]
+    let media_type_split = media_type
+        .split('+')
+        .next()
+        .ok_or(ManifestError::InvalidMediaType(media_type.into()))?;
+
+    match media_type_split {
+        "application/vnd.oci.distribution.manifest.v2" => Ok(ManifestV2Schema::Schema2),
+        "application/vnd.oci.distribution.manifest.list.v2" => Ok(ManifestV2Schema::Schema2List),
+        // Docker seems to be compatible to OCI, so we also support those.
+        "application/vnd.docker.distribution.manifest.v2" => Ok(ManifestV2Schema::Schema2),
+        "application/vnd.docker.distribution.manifest.list.v2" => Ok(ManifestV2Schema::Schema2List),
+        _ => Err(ManifestError::InvalidMediaType(media_type.into())),
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FsLayerV2_1 {
     #[serde(rename = "blobSum")]
@@ -102,7 +216,7 @@ pub struct ManifestV2_2 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ManifestPlatformV2_2 {
+pub struct ManifestPlatformV2_2 {
     /// The architecture field specifies the CPU architecture, for example
     /// amd64 or ppc64le.
     architecture: String,
@@ -131,7 +245,7 @@ struct ManifestPlatformV2_2 {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ManifestListEntryV2_2 {
+pub struct ManifestListEntryV2_2 {
     /// The MIME type of the referenced object.
     ///
     /// This will generally be `application/vnd.docker.image.manifest.v2+json`,
@@ -167,7 +281,7 @@ struct ManifestListEntryV2_2 {
 /// the Content-Type returned in the HTTP response.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ManifestListV2_2 {
+pub struct ManifestListV2_2 {
     /// This field specifies the image manifest schema version as an integer.
     ///
     /// This schema uses version 2.
@@ -274,4 +388,109 @@ mod tests {
         );
         assert_eq!(manifest_list.manifests.len(), 2);
     }
+
+    #[test]
+    fn test_manifest_schemaonly_schema1() {
+        let test_data = include_str!("test/manifest-v2-1.test.json");
+
+        let manifest: ManifestSchemaOnlyV2 =
+            serde_json::from_str(test_data).expect("Could not deserialize manifest");
+
+        assert_eq!(manifest.schema(), 1);
+    }
+
+    #[test]
+    fn test_manifest_schemaonly_schema2() {
+        let test_data = include_str!("test/manifest-v2-2.test.json");
+
+        let manifest: ManifestSchemaOnlyV2 =
+            serde_json::from_str(test_data).expect("Could not deserialize manifest");
+
+        assert_eq!(manifest.schema(), 2);
+    }
+
+    #[test]
+    fn test_manifest_schemaonly_schema2_list() {
+        let test_data = include_str!("test/manifest-list-v2-2.test.json");
+
+        let manifest: ManifestSchemaOnlyV2 =
+            serde_json::from_str(test_data).expect("Could not deserialize manifest");
+
+        assert_eq!(manifest.schema(), 2);
+    }
+
+    #[test]
+    fn test_manifest_mediatypeonly_schema2() {
+        let test_data = include_str!("test/manifest-v2-2.test.json");
+
+        let manifest: ManifestMediaTypeOnlyV2_2 =
+            serde_json::from_str(test_data).expect("Could not deserialize manifest");
+
+        assert_eq!(
+            manifest.media_type(),
+            "application/vnd.docker.distribution.manifest.v2+json"
+        );
+    }
+
+    #[test]
+    fn test_manifest_mediatypeonly_schema2_list() {
+        let test_data = include_str!("test/manifest-list-v2-2.test.json");
+
+        let manifest: ManifestMediaTypeOnlyV2_2 =
+            serde_json::from_str(test_data).expect("Could not deserialize manifest");
+
+        assert_eq!(
+            manifest.media_type(),
+            "application/vnd.docker.distribution.manifest.list.v2+json"
+        );
+    }
+
+    #[test]
+    fn test_probe_manifest_schema1() {
+        let test_data = include_str!("test/manifest-v2-1.test.json");
+        let schema = probe_manifest_v2_schema(test_data).expect("could not probe manifest schema");
+
+        assert_eq!(schema, ManifestV2Schema::Schema1);
+    }
+
+    #[test]
+    fn test_probe_manifest_schema2() {
+        let test_data = include_str!("test/manifest-v2-2.test.json");
+        let schema = probe_manifest_v2_schema(test_data).expect("could not probe manifest schema");
+
+        assert_eq!(schema, ManifestV2Schema::Schema2);
+    }
+
+    #[test]
+    fn test_probe_manifest_schema2_list() {
+        let test_data = include_str!("test/manifest-list-v2-2.test.json");
+        let schema = probe_manifest_v2_schema(test_data).expect("could not probe manifest schema");
+
+        assert_eq!(schema, ManifestV2Schema::Schema2List);
+    }
+
+    #[test]
+    fn test_parse_manifest_v2() {
+        let test_data = include_str!("test/manifest-v2-1.test.json");
+        let manifest: ManifestV2 = test_data
+            .parse()
+            .expect("Could not parse manifest schema 1");
+        assert_eq!(ManifestV2Schema::from(manifest), ManifestV2Schema::Schema1);
+
+        let test_data = include_str!("test/manifest-v2-2.test.json");
+        let manifest: ManifestV2 = test_data
+            .parse()
+            .expect("Could not parse manifest schema 2");
+        assert_eq!(ManifestV2Schema::from(manifest), ManifestV2Schema::Schema2);
+
+        let test_data = include_str!("test/manifest-list-v2-2.test.json");
+        let manifest: ManifestV2 = test_data
+            .parse()
+            .expect("Could not parse manifest schema 2 list");
+        assert_eq!(
+            ManifestV2Schema::from(manifest),
+            ManifestV2Schema::Schema2List
+        );
+    }
+
 }
