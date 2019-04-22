@@ -289,6 +289,12 @@ pub struct ConfigV2_2 {
     digest: Digest,
 }
 
+impl ConfigV2_2 {
+    pub fn digest(&self) -> &Digest {
+        &self.digest
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct LayerV2_2 {
     /// The MIME type of the referenced object.
