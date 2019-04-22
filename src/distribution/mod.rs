@@ -1,7 +1,7 @@
 mod auth;
 use auth::{Authenticate, Credential};
 
-use crate::{image::manifest::ManifestV2, image::Image};
+use crate::image::Image;
 
 use reqwest::{Client, StatusCode};
 use ttl_cache::TtlCache;
@@ -181,37 +181,6 @@ impl Registry {
         }
 
         Err(RegistryError::CouldNotAuthenticate)
-    }
-
-    /// Fetch the manifest for a given repository
-    ///
-    /// # Example
-    /// ```
-    ///# extern crate opencontainers;
-    ///# use opencontainers::Registry;
-    ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let manifest = registry.manifest("library/hello-world", "latest")
-    ///     .expect("Could not get Manifest");
-    /// ```
-    pub fn manifest(&self, name: &str, reference: &str) -> Result<ManifestV2, RegistryError> {
-        let url = format!("{}/v2/{}/manifests/{}", self.url, name, reference);
-
-        // Make sure we only accept schema 2, if we don't set this, we will get
-        // schema1 by default.
-        // For now, do not support Manifest Lists.
-        let accept_types = vec![
-            "application/vnd.oci.distribution.manifest.v2+json",
-            "application/vnd.docker.distribution.manifest.v2+json",
-            ];
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(reqwest::header::ACCEPT, accept_types.join(",").parse().unwrap());
-
-        self.get(&url, Some(&headers))?
-            .text()
-            .map_err(RegistryError::ReqwestError)?
-            .parse()
-            .map_err(RegistryError::ManifestError)
     }
 
     /// Create an image handle for a given image

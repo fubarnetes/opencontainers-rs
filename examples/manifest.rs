@@ -7,7 +7,9 @@ fn main() {
     pretty_env_logger::init();
 
     let registry = Registry::new("https://registry-1.docker.io");
-    let manifest = registry.manifest("hello-world", "latest").unwrap();
+    let image = registry
+        .image("library/hello-world", "latest")
+        .expect("Could not get image");
 
-    println!("{:?}", manifest);
+    println!("{:#?}", image.manifest());
 }
