@@ -1,0 +1,13 @@
+user = ${ user_spec | user_spec ~ ":" ~ group_spec }
+
+user_spec = { username | uid }
+group_spec = { group | gid }
+
+username = _{ ident }
+group = _{ ident }
+
+uid = _{ number }
+gid = _{ number }
+
+ident = _{ ASCII_ALPHA ~ (ASCII_ALPHA | ASCII_DIGIT)* }
+number = _{ ASCII_DIGIT+ }

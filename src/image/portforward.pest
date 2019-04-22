@@ -1,0 +1,5 @@
+port_forward = { port | port ~ "/" ~ protocol }
+
+port = _{ ASCII_DIGIT+ }
+
+protocol = { "tcp" | "udp" }
