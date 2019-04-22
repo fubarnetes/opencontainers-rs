@@ -1,3 +1,4 @@
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -296,6 +297,111 @@ pub struct WindowsUser {
     pub username: Option<String>,
 }
 
+/// Enum representing the runtime state of a container
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum RuntimeStatus {
+    /// The container is being created (step 2 in the lifecycle)
+    Creating,
+
+    /// The runtime has finished the create operation (after step 2 in the
+    /// lifecycle), and the container process has neither exited nor executed
+    /// the user-specified program
+    Created,
+
+    /// The container process has executed the user-specified program but has
+    /// not exited (after step 5 in the lifecycle)
+    Running,
+
+    /// The container process has exited (step 7 in the lifecycle)
+    Stopped,
+
+    /// Additional values MAY be defined by the runtime, however, they MUST be
+    /// used to represent new runtime states not defined above.
+    Other(String),
+}
+
+impl std::str::FromStr for RuntimeStatus {
+    type Err = !;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "creating" => Ok(RuntimeStatus::Creating),
+            "created" => Ok(RuntimeStatus::Created),
+            "running" => Ok(RuntimeStatus::Running),
+            "stopped" => Ok(RuntimeStatus::Stopped),
+            other => Ok(RuntimeStatus::Other(other.into())),
+        }
+    }
+}
+
+impl std::fmt::Display for RuntimeStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RuntimeStatus::Creating => "creating",
+                RuntimeStatus::Created => "created",
+                RuntimeStatus::Running => "running",
+                RuntimeStatus::Stopped => "stopped",
+                RuntimeStatus::Other(ref s) => s,
+            }
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for RuntimeStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for RuntimeStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct State {
+    /// The OCI specification version used when creating the container
+    #[serde(rename = "ociVersion")]
+    oci_version: String,
+
+    /// The container's ID.
+    ///
+    /// This MUST be unique across all containers on this host. There is no
+    /// requirement that it be unique across hosts.
+    id: String,
+
+    /// The Runtime State of the container
+    status: RuntimeStatus,
+
+    /// The ID of the container process, as seen by the host.
+    ///
+    /// REQUIRED when [status] is [RuntimeStatus::Created] or
+    /// [RuntimeStatus::Running] on Linux, OPTIONAL on other platforms
+    pid: u64,
+
+    /// The absolute path to the container's bundle directory. This is provided
+    /// so that consumers can find the container's configuration and root
+    /// filesystem on the host.
+    bundle: PathBuf,
+
+    /// contains the list of annotations associated with the container. If no
+    /// annotations were provided then this property MAY either be absent or an
+    /// empty map.
+    annotations: Option<HashMap<String, String>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,5 +429,16 @@ mod tests {
             assert_eq!(root.path, PathBuf::from("rootfs"));
             assert_eq!(root.readonly(), true);
         }
+    }
+
+    #[test]
+    fn test_runtime_state() {
+        let test_data = include_str!("test/state.test.json");
+
+        let state: State = serde_json::from_str(test_data).expect("Could not deserialize state");
+
+        assert_eq!(state.id, "oci-container1");
+        assert_eq!(state.pid, 4422);
+        assert_eq!(state.bundle, PathBuf::from("/containers/redis"));
     }
 }

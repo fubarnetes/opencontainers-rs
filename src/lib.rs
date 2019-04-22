@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 extern crate chrono;
 extern crate hyperx;
 extern crate pest;
