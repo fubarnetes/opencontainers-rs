@@ -174,7 +174,6 @@ struct ManifestListV2_2 {
     #[serde(rename = "schemaVersion")]
     pub schema: u64,
 
-
     /// The MIME type of the manifest list. This should be set to
     /// `application/vnd.docker.distribution.manifest.list.v2+json`.
     media_type: String,

@@ -2,7 +2,6 @@ extern crate reqwest;
 use reqwest::{Client, StatusCode};
 
 extern crate www_authenticate;
-use www_authenticate::WwwAuthenticate;
 
 #[macro_use]
 extern crate failure;
@@ -14,9 +13,9 @@ extern crate serde;
 
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_json;
-
 extern crate chrono;
+extern crate hyperx;
+extern crate serde_json;
 extern crate ttl_cache;
 
 use ttl_cache::TtlCache;
@@ -82,7 +81,10 @@ impl Registry {
         }
     }
 
-    fn try_auth(&self, authenticate: &WwwAuthenticate) -> Result<Vec<Credential>, RegistryError> {
+    fn try_auth(
+        &self,
+        authenticate: &reqwest::header::HeaderValue,
+    ) -> Result<Vec<Credential>, RegistryError> {
         auth::do_challenge(&self.client, authenticate)
     }
 
@@ -123,7 +125,7 @@ impl Registry {
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
-    ///# let registry = Registry::new("https://registry-1.docker.io");
+    ///# let registry = Registry::new(<"https://registry-1.docker.io");
     /// let endpoint = format!("{}/v2/", registry.url);
     /// let response = registry.get(endpoint.as_str())
     ///     .expect("Could not perform API Version Check");
@@ -140,8 +142,10 @@ impl Registry {
         };
 
         // Unauthorized
-        let unauthorized = response.status() == StatusCode::Unauthorized;
-        let has_authenticate = response.headers().has::<WwwAuthenticate>();
+        let unauthorized = response.status() == StatusCode::UNAUTHORIZED;
+        let has_authenticate = response
+            .headers()
+            .contains_key(reqwest::header::WWW_AUTHENTICATE);
 
         if unauthorized && !has_authenticate {
             return Err(RegistryError::InvalidAuthenticationChallenge(
@@ -152,9 +156,12 @@ impl Registry {
         }
 
         info!("Authentication required");
-        let authenticate = response.headers().get::<WwwAuthenticate>().ok_or(
-            RegistryError::InvalidAuthenticationChallenge("Missing WWW-Authenticate Header".into()),
-        )?;
+        let authenticate = response
+            .headers()
+            .get(reqwest::header::WWW_AUTHENTICATE)
+            .ok_or(RegistryError::InvalidAuthenticationChallenge(
+                "Missing WWW-Authenticate Header".into(),
+            ))?;
 
         let credentials = self.try_auth(authenticate)?;
 
@@ -185,7 +192,9 @@ impl Registry {
         let url = format!("{}/v2/library/{}/manifests/{}", self.url, name, reference);
         let mut response = self.get(&url)?;
 
-        let manifest = response.text().map_err(|e| RegistryError::ReqwestError(e))?;
+        let manifest = response
+            .text()
+            .map_err(|e| RegistryError::ReqwestError(e))?;
 
         Ok(manifest)
     }

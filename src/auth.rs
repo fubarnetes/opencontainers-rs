@@ -1,12 +1,11 @@
 use chrono::{DateTime, Utc};
-use www_authenticate;
-use www_authenticate::WwwAuthenticate;
+use hyperx::header::Header;
+use www_authenticate::{RawChallenge, WwwAuthenticate};
 
 use reqwest;
 use reqwest::Client;
 
-use RegistryError;
-
+use crate::RegistryError;
 use std::fmt;
 
 #[derive(Debug, PartialEq)]
@@ -20,13 +19,9 @@ pub trait Authenticate {
 
 impl Authenticate for reqwest::RequestBuilder {
     fn authenticate(&mut self, auth: &Credential) -> &mut Self {
-        let header = match auth {
-            Credential::Token(t) => reqwest::header::Authorization(reqwest::header::Bearer {
-                token: t.to_string(),
-            }),
+        match auth {
+            Credential::Token(t) => self.bearer_auth(t),
         };
-
-        self.header(header);
 
         self
     }
@@ -44,14 +39,14 @@ impl www_authenticate::Challenge for BearerChallenge {
         "Bearer"
     }
 
-    fn from_raw(raw: www_authenticate::RawChallenge) -> Option<BearerChallenge> {
-        use www_authenticate::RawChallenge::*;
+    fn from_raw(raw: RawChallenge) -> Option<BearerChallenge> {
         match raw {
-            Token68(_) => None,
-            Fields(mut map) => {
+            RawChallenge::Token68(_) => None,
+            RawChallenge::Fields(mut map) => {
                 let realm = map.remove("realm");
                 let service = map.remove("service");
-                let scopes: Option<Vec<String>> = map.remove("scope")
+                let scopes: Option<Vec<String>> = map
+                    .remove("scope")
                     .map(|scopes| scopes.split(" ").map(|s| s.to_string()).collect());
 
                 Some(BearerChallenge {
@@ -132,7 +127,9 @@ impl Token {
             return Err(RegistryError::CouldNotGetToken(status));
         }
 
-        let token: Token = response.json().map_err(|e| RegistryError::ReqwestError(e))?;
+        let token: Token = response
+            .json()
+            .map_err(|e| RegistryError::ReqwestError(e))?;
 
         Ok(token)
     }
@@ -146,11 +143,14 @@ impl fmt::Display for Token {
 
 pub fn do_challenge(
     client: &Client,
-    authenticate: &WwwAuthenticate,
+    authenticate: &reqwest::header::HeaderValue,
 ) -> Result<Vec<Credential>, RegistryError> {
-    let challenges = authenticate.get::<BearerChallenge>().ok_or(
-        RegistryError::InvalidAuthenticationChallenge("No Bearer Challenge provided".into()),
-    )?;
+    let raw: hyperx::header::Raw = authenticate.as_bytes().into();
+    let challenges = WwwAuthenticate::parse_header(&raw)
+        .get::<BearerChallenge>()
+        .ok_or(RegistryError::InvalidAuthenticationChallenge(
+            "No Bearer Challenge provided".into(),
+        ))?;
 
     let auths: Vec<Credential> = challenges
         .iter()
