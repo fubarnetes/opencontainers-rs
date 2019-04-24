@@ -1,11 +1,13 @@
 #![feature(never_type)]
 
 extern crate chrono;
+extern crate flate2;
 extern crate hyperx;
 extern crate pest;
 extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
+extern crate tar;
 extern crate ttl_cache;
 extern crate void;
 extern crate www_authenticate;

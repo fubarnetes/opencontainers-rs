@@ -13,20 +13,56 @@ pub struct Image<'a> {
     manifest: ManifestV2,
 }
 
+/// Trait to determine which image to select from a Manifest.
+pub trait ImageSelector {
+    /// Select a specific ManifestV2Entry from a Manifest
+    fn select_manifest<'a>(
+        manifest_list: &'a manifest::ManifestListV2_2,
+    ) -> Option<&'a manifest::ManifestListEntryV2_2>;
+}
+
+/// Select the best image based on the current platform.
+pub struct ImagePlatformSelector {}
+
+impl ImageSelector for ImagePlatformSelector {
+    fn select_manifest<'a>(
+        manifest_list: &'a manifest::ManifestListV2_2,
+    ) -> Option<&'a manifest::ManifestListEntryV2_2> {
+        manifest_list
+            .manifests
+            .iter()
+            .filter(|m| m.platform.current_platform_matches())
+            .next()
+    }
+}
+
 impl<'a> Image<'a> {
     /// Create a new image given a specific repository
     ///
     /// Consider using [Registry::image] instead.
     ///
+    /// The type parameter has a trait bound on [ImageSelector], which can
+    /// be implemented to select which image to use when pulling from a
+    /// fat manifest.
+    /// For most cases the [ImagePlatformSelector] should do just fine.
+    ///
     /// # Example
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
+    ///# use opencontainers::image::ImagePlatformSelector;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let image = opencontainers::Image::new(&registry, "library/hello-world", "latest")
+    /// let image = opencontainers::Image::new::<ImagePlatformSelector>(&registry, "library/hello-world", "latest")
     ///     .expect("Could not get image");
     /// ```
-    pub fn new(registry: &'a Registry, name: &str, reference: &str) -> Result<Self, RegistryError> {
+    pub fn new<IS>(
+        registry: &'a Registry,
+        name: &str,
+        reference: &str,
+    ) -> Result<Self, RegistryError>
+    where
+        IS: ImageSelector,
+    {
         let name = name.to_owned();
 
         let url = format!("{}/v2/{}/manifests/{}", registry.url, name, reference);
@@ -35,7 +71,9 @@ impl<'a> Image<'a> {
         // schema1 by default.
         // For now, do not support Manifest Lists.
         let accept_types = vec![
+            "application/vnd.oci.distribution.manifest.list.v2+json",
             "application/vnd.oci.distribution.manifest.v2+json",
+            "application/vnd.docker.distribution.manifest.list.v2+json",
             "application/vnd.docker.distribution.manifest.v2+json",
         ];
 
@@ -52,11 +90,21 @@ impl<'a> Image<'a> {
             .parse()
             .map_err(RegistryError::ManifestError)?;
 
-        Ok(Self {
+        let mut image = Self {
             registry,
             name,
             manifest,
-        })
+        };
+
+        match image.manifest {
+            ManifestV2::Schema2List(ref l) => {
+                image.manifest =
+                    ManifestV2::Schema2(l.get_current_platform_manifest::<IS>(&image)?);
+            }
+            _ => {}
+        };
+
+        Ok(image)
     }
 
     /// Return an image manifest
@@ -65,8 +113,9 @@ impl<'a> Image<'a> {
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
+    ///# use opencontainers::image::ImagePlatformSelector;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let manifest = registry.image("library/hello-world", "latest")
+    /// let manifest = registry.image::<ImagePlatformSelector>("library/hello-world", "latest")
     ///     .expect("Could not get image")
     ///     .manifest();
     /// ```
@@ -74,13 +123,10 @@ impl<'a> Image<'a> {
         &self.manifest
     }
 
-    pub fn get_blob(&self, digest: &Digest) -> Result<String, RegistryError> {
+    pub fn get_blob(&self, digest: &Digest) -> Result<reqwest::Response, RegistryError> {
         let url = format!("{}/v2/{}/blobs/{}", self.registry.url, self.name, digest);
 
-        self.registry
-            .get(&url, None)?
-            .text()
-            .map_err(RegistryError::ReqwestError)
+        self.registry.get(&url, None)
     }
 
     /// Return the image runtime configuration
@@ -96,7 +142,31 @@ impl<'a> Image<'a> {
         };
 
         self.get_blob(config_digest)?
+            .text()
+            .map_err(RegistryError::ReqwestError)?
             .parse()
             .map_err(RegistryError::ImageSpecError)
+    }
+
+    /// Get a layer, decompressing if necessary
+    pub fn get_layer<L>(
+        &self,
+        layer: &L,
+    ) -> Result<tar::Archive<Box<dyn std::io::Read>>, RegistryError>
+    where
+        L: crate::image::manifest::Layer + ?Sized,
+    {
+        let response = self.get_blob(layer.digest())?;
+
+        if let Some(media_type) = layer.media_type() {
+            if !media_type.is_gzipped() {
+                // No need to wrap reader
+                return Ok(tar::Archive::new(Box::new(response)));
+            }
+        }
+
+        // Otherwise, wrap in a flate2::read::GzDecoder
+        let decoder = flate2::read::GzDecoder::new(response);
+        Ok(tar::Archive::new(Box::new(decoder)))
     }
 }
