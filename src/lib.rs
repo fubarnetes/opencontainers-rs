@@ -7,6 +7,7 @@ extern crate reqwest;
 extern crate serde;
 extern crate serde_json;
 extern crate ttl_cache;
+extern crate void;
 extern crate www_authenticate;
 
 #[macro_use]

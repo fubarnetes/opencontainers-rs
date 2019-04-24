@@ -45,7 +45,7 @@ pub enum RuntimeStatus {
 }
 
 impl std::str::FromStr for RuntimeStatus {
-    type Err = !;
+    type Err = void::Void;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
