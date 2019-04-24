@@ -34,6 +34,8 @@ impl std::str::FromStr for GoOs {
         match s {
             "android" => Ok(GoOs::Android),
             "darwin" => Ok(GoOs::Darwin),
+            "macos" => Ok(GoOs::Darwin),
+            "ios" => Ok(GoOs::Darwin),
             "dragonfly" => Ok(GoOs::Dragonfly),
             "freebsd" => Ok(GoOs::FreeBSD),
             "linux" => Ok(GoOs::Linux),
@@ -122,11 +124,14 @@ impl std::str::FromStr for GoArch {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "386" => Ok(GoArch::I386),
+            "x86" => Ok(GoArch::I386),
             "amd64" => Ok(GoArch::AMD64),
+            "x86_64" => Ok(GoArch::AMD64),
             "amd64p32" => Ok(GoArch::AMD64p32),
             "arm" => Ok(GoArch::ARM),
             "armbe" => Ok(GoArch::ARMbe),
             "arm64" => Ok(GoArch::ARM64),
+            "aarch64" => Ok(GoArch::ARM64),
             "arm64be" => Ok(GoArch::ARM64be),
             "ppc64" => Ok(GoArch::PPC64),
             "ppc64le" => Ok(GoArch::PPC64le),
@@ -137,6 +142,7 @@ impl std::str::FromStr for GoArch {
             "mips64p32" => Ok(GoArch::MIPS64p32),
             "mips64p32le" => Ok(GoArch::MIPS64p32le),
             "ppc" => Ok(GoArch::PPC),
+            "powerpc" => Ok(GoArch::PPC),
             "s390" => Ok(GoArch::S390),
             "s390x" => Ok(GoArch::S390x),
             "sparc" => Ok(GoArch::SPARC),

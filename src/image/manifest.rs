@@ -1,6 +1,10 @@
 use pest::Parser;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use std::ops::Deref;
 use std::str::FromStr;
+
+use crate::distribution::RegistryError;
+use crate::image::{go, Image, ImageSelector};
 
 #[derive(Debug, Fail)]
 #[allow(clippy::large_enum_variant)]
@@ -19,6 +23,9 @@ pub enum ManifestError {
 
     #[fail(display = "Invalid digest algorithm: {}", _0)]
     InvalidDigestAlgorithm(String),
+
+    #[fail(display = "Could not find manifest for current platform")]
+    NoMatchingPlatformFound,
 }
 
 /// Helper struct to determine Image Manifest Schema.
@@ -51,12 +58,148 @@ impl ManifestMediaTypeOnlyV2_2 {
     }
 }
 
+pub trait Layer {
+    /// Return the digest of the layer
+    fn digest(&self) -> &Digest;
+
+    /// Return the media type of the layer, if available
+    fn media_type(&self) -> Option<&LayerMediaType>;
+}
+
+impl Layer for Box<dyn Layer> {
+    fn digest(&self) -> &Digest {
+        self.deref().digest()
+    }
+
+    fn media_type(&self) -> Option<&LayerMediaType> {
+        self.deref().media_type()
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub enum LayerMediaType {
+    // application/vnd.oci.image.layer.v1.tar
+    Tar,
+
+    // application/vnd.oci.image.layer.v1.tar+gzip
+    // application/vnd.docker.image.rootfs.diff.tar.gzip
+    TarGz,
+
+    // application/vnd.oci.image.layer.nondistributable.v1.tar
+    NondistributableTar,
+
+    // application/vnd.oci.image.layer.nondistributable.v1.tar+gzip
+    // application/vnd.docker.image.rootfs.foreign.diff.tar.gzip
+    NondistributableTarGz,
+
+    /// An encountered mediaType that is unknown to the implementation MUST be ignored.
+    Other(String),
+}
+
+impl LayerMediaType {
+    /// Return if a media type is distributable
+    pub fn is_distributable(&self) -> bool {
+        match self {
+            LayerMediaType::Tar => true,
+            LayerMediaType::TarGz => true,
+            LayerMediaType::NondistributableTar => false,
+            LayerMediaType::NondistributableTarGz => false,
+            // Regard any other media types as distributable by default
+            LayerMediaType::Other(_) => true,
+        }
+    }
+
+    /// Return if media type is gzipped
+    pub fn is_gzipped(&self) -> bool {
+        match self {
+            LayerMediaType::Tar => false,
+            LayerMediaType::TarGz => true,
+            LayerMediaType::NondistributableTar => false,
+            LayerMediaType::NondistributableTarGz => true,
+            // Assume other media types are gzipped.
+            LayerMediaType::Other(_) => true,
+        }
+    }
+}
+
+impl std::str::FromStr for LayerMediaType {
+    type Err = void::Void;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "application/vnd.oci.image.layer.v1.tar" => LayerMediaType::Tar,
+            "application/vnd.oci.image.layer.v1.tar+gzip" => LayerMediaType::TarGz,
+            "application/vnd.docker.image.rootfs.diff.tar.gzip" => LayerMediaType::TarGz,
+            "application/vnd.oci.image.layer.nondistributable.v1.tar" => {
+                LayerMediaType::NondistributableTar
+            }
+            "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip" => {
+                LayerMediaType::NondistributableTarGz
+            }
+            "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip" => {
+                LayerMediaType::NondistributableTarGz
+            }
+            other => LayerMediaType::Other(other.into()),
+        })
+    }
+}
+
+impl std::fmt::Display for LayerMediaType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                LayerMediaType::Tar => "application/vnd.oci.image.layer.v1.tar",
+                LayerMediaType::TarGz => "application/vnd.oci.image.layer.v1.tar+gzip",
+                LayerMediaType::NondistributableTar => {
+                    "application/vnd.oci.image.layer.nondistributable.v1.tar"
+                }
+                LayerMediaType::NondistributableTarGz => {
+                    "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip"
+                }
+                // Assume other media types are gzipped.
+                LayerMediaType::Other(media_type) => media_type,
+            }
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for LayerMediaType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for LayerMediaType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
 /// Enum of Manifest structs for each schema version.
 #[derive(Debug)]
 pub enum ManifestV2 {
     Schema1(ManifestV2_1),
     Schema2(ManifestV2_2),
     Schema2List(ManifestListV2_2),
+}
+
+impl ManifestV2 {
+    pub fn layers(&self) -> Result<Box<dyn Iterator<Item = &dyn Layer> + '_>, RegistryError> {
+        Ok(match self {
+            ManifestV2::Schema1(s1) => Box::new(s1.clone().layers.iter().map(|l| l as &Layer)),
+            ManifestV2::Schema2(s2) => Box::new(s2.clone().layers.iter().map(|l| l as &Layer)),
+            ManifestV2::Schema2List(_) => unimplemented!(),
+        })
+    }
 }
 
 impl FromStr for ManifestV2 {
@@ -244,10 +387,21 @@ impl Serialize for DigestAlgorithm {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FsLayerV2_1 {
     #[serde(rename = "blobSum")]
     inner: Digest,
+}
+
+impl Layer for FsLayerV2_1 {
+    fn digest(&self) -> &Digest {
+        &self.inner
+    }
+
+    fn media_type(&self) -> Option<&LayerMediaType> {
+        // Schema 1 does not include a media type
+        None
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -295,7 +449,7 @@ impl ConfigV2_2 {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct LayerV2_2 {
     /// The MIME type of the referenced object.
     ///
@@ -304,7 +458,7 @@ pub struct LayerV2_2 {
     /// `application/vnd.docker.image.rootfs.foreign.diff.tar.gzip` may be
     /// pulled from a remote location but they should never be pushed.
     #[serde(rename = "mediaType")]
-    media_type: String,
+    media_type: LayerMediaType,
 
     /// The size in bytes of the object
     ///
@@ -322,6 +476,16 @@ pub struct LayerV2_2 {
     /// Content should be verified against the digest and size. This field is
     /// optional and uncommon.
     urls: Option<Vec<String>>,
+}
+
+impl Layer for LayerV2_2 {
+    fn digest(&self) -> &Digest {
+        &self.digest
+    }
+
+    fn media_type(&self) -> Option<&LayerMediaType> {
+        Some(&self.media_type)
+    }
 }
 
 /// Image Manifest Version 2, Schema 2
@@ -357,11 +521,11 @@ pub struct ManifestV2_2 {
 pub struct ManifestPlatformV2_2 {
     /// The architecture field specifies the CPU architecture, for example
     /// amd64 or ppc64le.
-    architecture: String,
+    architecture: go::GoArch,
 
     /// The os field specifies the operating system, for example linux or
     /// windows.
-    os: String,
+    os: go::GoOs,
 
     /// The optional os.version field specifies the operating system version,
     /// for example 10.0.10586.
@@ -380,6 +544,43 @@ pub struct ManifestPlatformV2_2 {
     /// The optional features field specifies an array of strings, each listing
     /// a required CPU feature (for example sse4 or aes).
     features: Option<Vec<String>>,
+}
+
+impl ManifestPlatformV2_2 {
+    pub fn current_platform_matches(&self) -> bool {
+        self.current_arch_matches()
+            && self.current_os_matches()
+            && self.current_features_match()
+            && self.current_variant_matches()
+    }
+
+    pub fn current_arch_matches(&self) -> bool {
+        let current_arch = std::env::consts::ARCH.parse::<go::GoArch>().ok();
+        current_arch == Some(self.architecture)
+    }
+
+    pub fn current_os_matches(&self) -> bool {
+        let current_os = std::env::consts::OS.parse::<go::GoOs>().ok();
+        current_os == Some(self.os)
+    }
+
+    pub fn current_osfeatures_match(&self) -> bool {
+        // On windows, we should check, whether the win32k driver is installed.
+        #[cfg(target_platform = "windows")]
+        compile_error!("windows is not supported at the moment!");
+
+        true
+    }
+
+    pub fn current_features_match(&self) -> bool {
+        // This property is RESERVED for future versions of the spec..
+        true
+    }
+
+    pub fn current_variant_matches(&self) -> bool {
+        // FIXME: on arm, we should really check the arm variant here.
+        true
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -406,7 +607,7 @@ pub struct ManifestListEntryV2_2 {
     /// The platform object describes the platform which the image in the
     /// manifest runs on. A full list of valid operating system and architecture
     /// values are listed in the Go language documentation for $GOOS and $GOARCH
-    platform: ManifestPlatformV2_2,
+    pub platform: ManifestPlatformV2_2,
 }
 
 /// Manifest List
@@ -431,7 +632,45 @@ pub struct ManifestListV2_2 {
     media_type: String,
 
     /// The manifests field contains a list of manifests for specific platforms.
-    manifests: Vec<ManifestListEntryV2_2>,
+    pub manifests: Vec<ManifestListEntryV2_2>,
+}
+
+impl ManifestListV2_2 {
+    pub fn get_current_platform_manifest_digest<T>(&self) -> Option<&Digest>
+    where
+        T: ImageSelector,
+    {
+        T::select_manifest(self).map(|entry| &entry.digest)
+    }
+
+    /// Get a platform manifest for the current platform from a manifest list.
+    pub fn get_current_platform_manifest<T>(
+        &self,
+        image: &Image,
+    ) -> Result<ManifestV2_2, RegistryError>
+    where
+        T: ImageSelector,
+    {
+        let digest = self
+            .get_current_platform_manifest_digest::<T>()
+            .ok_or(ManifestError::NoMatchingPlatformFound)
+            .map_err(RegistryError::ManifestError)?;
+
+        let url = format!(
+            "{}/v2/{}/manifests/{}",
+            image.registry.url, image.name, digest
+        );
+
+        let blob = image
+            .registry
+            .get(&url, None)?
+            .text()
+            .map_err(RegistryError::ReqwestError)?;
+
+        serde_json::from_str(&blob)
+            .map_err(ManifestError::JsonError)
+            .map_err(RegistryError::ManifestError)
+    }
 }
 
 #[cfg(test)]
@@ -482,7 +721,7 @@ mod tests {
         assert_eq!(
             manifest.layers[0],
             LayerV2_2 {
-                media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
+                media_type: LayerMediaType::TarGz,
                 size: 32654,
                 digest: "sha256:e692418e4cbaf90ca69d05a66403747baa33ee08806650b51fab815ad7fc331f"
                     .parse()
@@ -494,7 +733,7 @@ mod tests {
         assert_eq!(
             manifest.layers[1],
             LayerV2_2 {
-                media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
+                media_type: LayerMediaType::TarGz,
                 size: 16724,
                 digest: "sha256:3c3a4604a545cdc127456d94e421cd355bca5b528f4a9c1905b15da2eb4a4c6b"
                     .parse()
@@ -506,7 +745,7 @@ mod tests {
         assert_eq!(
             manifest.layers[2],
             LayerV2_2 {
-                media_type: "application/vnd.docker.image.rootfs.diff.tar.gzip".into(),
+                media_type: LayerMediaType::TarGz,
                 size: 73109,
                 digest: "sha256:ec4b8955958665577945c89419d1af06b5f7636b4ac3da7f12184802ad867736"
                     .parse()

@@ -191,15 +191,24 @@ impl Registry {
 
     /// Create an image handle for a given image
     ///
+    /// The type parameter has a trait bound on [image::ImageSelector], which can
+    /// be implemented to select which image to use when pulling from a
+    /// fat manifest.
+    /// For most cases the [image::ImagePlatformSelector] should do just fine.
+    ///
     /// # Example
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
+    ///# use opencontainers::image::ImagePlatformSelector;
     ///# let registry = Registry::new("https://registry-1.docker.io");
-    /// let manifest = registry.image("library/hello-world", "latest")
+    /// let manifest = registry.image::<ImagePlatformSelector>("library/hello-world", "latest")
     ///     .expect("Could not get image");
     /// ```
-    pub fn image(&self, name: &str, reference: &str) -> Result<Image, RegistryError> {
-        Image::new(self, name, reference)
+    pub fn image<IS>(&self, name: &str, reference: &str) -> Result<Image, RegistryError>
+    where
+        IS: crate::image::ImageSelector,
+    {
+        Image::new::<IS>(self, name, reference)
     }
 }
