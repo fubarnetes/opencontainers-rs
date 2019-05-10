@@ -18,7 +18,8 @@ addons:
 
 matrix:
   allow_failure:
-    - rust: nightly
+    - rust: beta
+    - rust: stable
   fast_finish: true
 
 cache: cargo
