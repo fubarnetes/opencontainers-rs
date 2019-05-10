@@ -13,7 +13,7 @@ edition = "2018"
 chrono = { version = "0.4", features = ["serde"] }
 failure ="0.1"
 flate2 = "1.0.7"
-hyperx = "0.13"
+hyperx = "0.15"
 log = "0.4.0"
 pest = "2.1"
 pest_derive = "2.1"
