@@ -195,8 +195,8 @@ pub enum ManifestV2 {
 impl ManifestV2 {
     pub fn layers(&self) -> Result<Box<dyn Iterator<Item = &dyn Layer> + '_>, RegistryError> {
         Ok(match self {
-            ManifestV2::Schema1(s1) => Box::new(s1.clone().layers.iter().map(|l| l as &Layer)),
-            ManifestV2::Schema2(s2) => Box::new(s2.clone().layers.iter().map(|l| l as &Layer)),
+            ManifestV2::Schema1(s1) => Box::new(s1.clone().layers.iter().map(|l| l as &dyn Layer)),
+            ManifestV2::Schema2(s2) => Box::new(s2.clone().layers.iter().map(|l| l as &dyn Layer)),
             ManifestV2::Schema2List(_) => unimplemented!(),
         })
     }
