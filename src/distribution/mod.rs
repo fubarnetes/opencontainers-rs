@@ -200,7 +200,7 @@ impl Registry {
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
-    ///# use opencontainers::image::ImagePlatformSelector;
+    ///# use opencontainers::image::TestImageSelector as ImagePlatformSelector;
     ///# let registry = Registry::new("https://registry-1.docker.io");
     /// let manifest = registry.image::<ImagePlatformSelector>("library/hello-world", "latest")
     ///     .expect("Could not get image");

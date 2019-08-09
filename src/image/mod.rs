@@ -36,6 +36,20 @@ impl ImageSelector for ImagePlatformSelector {
     }
 }
 
+/// Utility image selector for tests, always takes the first available image manifest.
+pub struct TestImageSelector {}
+
+impl ImageSelector for TestImageSelector {
+    fn select_manifest<'a>(
+        manifest_list: &'a manifest::ManifestListV2_2,
+    ) -> Option<&'a manifest::ManifestListEntryV2_2> {
+        manifest_list
+            .manifests
+            .iter()
+            .next()
+    }
+}
+
 impl<'a> Image<'a> {
     /// Create a new image given a specific repository
     ///
@@ -50,7 +64,7 @@ impl<'a> Image<'a> {
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
-    ///# use opencontainers::image::ImagePlatformSelector;
+    ///# use opencontainers::image::TestImageSelector as ImagePlatformSelector;
     ///# let registry = Registry::new("https://registry-1.docker.io");
     /// let image = opencontainers::Image::new::<ImagePlatformSelector>(&registry, "library/hello-world", "latest")
     ///     .expect("Could not get image");
@@ -113,7 +127,7 @@ impl<'a> Image<'a> {
     /// ```
     ///# extern crate opencontainers;
     ///# use opencontainers::Registry;
-    ///# use opencontainers::image::ImagePlatformSelector;
+    ///# use opencontainers::image::TestImageSelector as ImagePlatformSelector;
     ///# let registry = Registry::new("https://registry-1.docker.io");
     /// let manifest = registry.image::<ImagePlatformSelector>("library/hello-world", "latest")
     ///     .expect("Could not get image")
