@@ -1,6 +1,3 @@
-extern crate opencontainers;
-extern crate pretty_env_logger;
-
 use opencontainers::image::ImagePlatformSelector;
 use opencontainers::Registry;
 
