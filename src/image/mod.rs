@@ -16,23 +16,22 @@ pub struct Image<'a> {
 /// Trait to determine which image to select from a Manifest.
 pub trait ImageSelector {
     /// Select a specific ManifestV2Entry from a Manifest
-    fn select_manifest<'a>(
-        manifest_list: &'a manifest::ManifestListV2_2,
-    ) -> Option<&'a manifest::ManifestListEntryV2_2>;
+    fn select_manifest(
+        manifest_list: &'_ manifest::ManifestListV2_2,
+    ) -> Option<&'_ manifest::ManifestListEntryV2_2>;
 }
 
 /// Select the best image based on the current platform.
 pub struct ImagePlatformSelector {}
 
 impl ImageSelector for ImagePlatformSelector {
-    fn select_manifest<'a>(
-        manifest_list: &'a manifest::ManifestListV2_2,
-    ) -> Option<&'a manifest::ManifestListEntryV2_2> {
+    fn select_manifest(
+        manifest_list: &'_ manifest::ManifestListV2_2,
+    ) -> Option<&'_ manifest::ManifestListEntryV2_2> {
         manifest_list
             .manifests
             .iter()
-            .filter(|m| m.platform.current_platform_matches())
-            .next()
+            .find(|m| m.platform.current_platform_matches())
     }
 }
 
@@ -40,13 +39,10 @@ impl ImageSelector for ImagePlatformSelector {
 pub struct TestImageSelector {}
 
 impl ImageSelector for TestImageSelector {
-    fn select_manifest<'a>(
-        manifest_list: &'a manifest::ManifestListV2_2,
-    ) -> Option<&'a manifest::ManifestListEntryV2_2> {
-        manifest_list
-            .manifests
-            .iter()
-            .next()
+    fn select_manifest(
+        manifest_list: &'_ manifest::ManifestListV2_2,
+    ) -> Option<&'_ manifest::ManifestListEntryV2_2> {
+        manifest_list.manifests.iter().next()
     }
 }
 
@@ -110,12 +106,8 @@ impl<'a> Image<'a> {
             manifest,
         };
 
-        match image.manifest {
-            ManifestV2::Schema2List(ref l) => {
-                image.manifest =
-                    ManifestV2::Schema2(l.get_current_platform_manifest::<IS>(&image)?);
-            }
-            _ => {}
+        if let ManifestV2::Schema2List(ref l) = image.manifest {
+            image.manifest = ManifestV2::Schema2(l.get_current_platform_manifest::<IS>(&image)?);
         };
 
         Ok(image)
