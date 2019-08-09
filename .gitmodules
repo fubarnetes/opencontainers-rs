@@ -1,0 +1,9 @@
+[submodule "spec/runtime-spec"]
+	path = spec/runtime-spec
+	url = https://github.com/opencontainers/runtime-spec.git
+[submodule "spec/distribution-spec"]
+	path = spec/distribution-spec
+	url = https://github.com/opencontainers/distribution-spec.git
+[submodule "spec/image-spec"]
+	path = spec/image-spec
+	url = https://github.com/opencontainers/image-spec.git
