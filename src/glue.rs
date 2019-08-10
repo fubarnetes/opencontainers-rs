@@ -63,13 +63,13 @@ fn get_whiteout_path_unix<P: AsRef<std::path::Path>>(path: P) -> Option<std::pat
     let filename = path.as_ref().file_name()?;
 
     let bytes: Vec<u8> = filename.as_bytes().into();
-    if !bytes.starts_with(".wh.".as_bytes()) {
+    if !bytes.starts_with(b".wh.") {
         return None;
     }
 
     let mut path = path.as_ref().to_owned();
     path.set_file_name(std::ffi::OsStr::from_bytes(&bytes[4..]));
-    return Some(path);
+    Some(path)
 }
 
 #[cfg(windows)]
@@ -84,7 +84,7 @@ fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::
 
     let mut path = path.as_ref().to_owned();
     path.set_file_name(std::ffi::OsString::from_wide(&wide[4..]));
-    return Some(path);
+    Some(path)
 }
 /// A trait that describes the actions required to create a container's root filesystem
 /// from an image.
@@ -144,7 +144,7 @@ impl Unpack for SimpleFolderUnpacker {
             .unpack_in(self.root.as_path())
             .map_err(UnpackError::UnpackEntry)?
         {
-            return Err(UnpackError::AttemptedFilesystemTraversal(path.into()));
+            return Err(UnpackError::AttemptedFilesystemTraversal(path));
         }
 
         Ok(())
