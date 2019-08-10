@@ -12,7 +12,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::windows::ffi::OsStrExt;
 
 #[cfg(windows)]
-use std::os::windows::ffi::OsStringsExt;
+use std::os::windows::ffi::OsStringExt;
 
 #[derive(Debug, Fail)]
 pub enum UnpackError {
