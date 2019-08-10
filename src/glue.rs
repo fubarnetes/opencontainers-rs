@@ -8,6 +8,12 @@ use crate::image::Image;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+
+#[cfg(windows)]
+use std::os::windows::ffi::OsStringsExt;
+
 #[derive(Debug, Fail)]
 pub enum UnpackError {
     #[fail(display = "Could not read tar entries: {}", _0)]
@@ -48,7 +54,8 @@ pub fn get_whiteout_path<P: AsRef<std::path::Path>>(path: P) -> Option<std::path
     #[cfg(unix)]
     return get_whiteout_path_unix(path);
 
-    // FIXME: Implement on Windows
+    #[cfg(windows)]
+    return get_whiteout_path_windows(path);
 }
 
 #[cfg(unix)]
@@ -65,6 +72,20 @@ fn get_whiteout_path_unix<P: AsRef<std::path::Path>>(path: P) -> Option<std::pat
     return Some(path);
 }
 
+#[cfg(windows)]
+fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::path::PathBuf> {
+    let filename = path.as_ref().file_name()?;
+
+    let wide: Vec<u16> = filename.encode_wide().collect();
+    let needle: std::ffi::OsString = ".wh.".to_owned().into();
+    if !wide.starts_with(&needle.encode_wide().collect::<Vec<u16>>()) {
+        return None;
+    }
+
+    let mut path = path.as_ref().to_owned();
+    path.set_file_name(std::ffi::OsString::from_wide(&wide[4..]));
+    return Some(path);
+}
 /// A trait that describes the actions required to create a container's root filesystem
 /// from an image.
 pub trait Unpack {
