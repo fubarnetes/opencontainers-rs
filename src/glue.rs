@@ -146,8 +146,8 @@ pub trait Unpack {
         let path: std::path::PathBuf = entry.path().map_err(UnpackError::GetEntryPath)?.into();
         if let Some(filename) = path.file_name() {
             if filename == std::ffi::OsStr::new(".wh..wh..opq") {
-                // FIXME: Removethe whiteout filename.
-                return self.whiteout_folder(path);
+                let whiteout_path = path.parent().unwrap();
+                return self.whiteout_folder(whiteout_path);
             }
 
             if let Some(whiteout_path) = get_whiteout_path(path) {
