@@ -99,9 +99,9 @@ fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::
 /// resolving symlinks. Should this fail due to the path not existing,
 /// check_path_in will attempt to canonicalize shorter subpaths first, falling
 /// back to [path_abs::PathAbs] to semantically resolve `..`.
-/// 
+///
 /// # Examples
-/// 
+///
 /// On Unix:
 /// ```
 ///# use opencontainers::glue::check_path_in;
@@ -159,12 +159,15 @@ pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool
 
     // Now that our path is partially canonicalized, we strip `.` entries and
     // try to semantically resolve `..` values.
-    let ret = path_abs::PathAbs::new(partially_canonicalized)
+    let canonicalized: std::path::PathBuf = path_abs::PathAbs::new(partially_canonicalized)
         .map_err(UnpackError::PathAbs)?
         .as_path()
-        .starts_with(base.as_ref());
+        .into();
 
-    Ok(ret)
+    println!("base: {:?}", base.as_ref());
+    println!("canonicalized: {:?}", canonicalized);
+
+    Ok(canonicalized.starts_with(base.as_ref()))
 }
 
 /// A trait that describes the actions required to create a container's root
@@ -181,7 +184,7 @@ pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool
 /// Implementations that fail to address this are likely to be vulnerable to
 /// file system traversal vulnerabilities due to the possibility of `..` being
 /// present in the paths contained in the tarball.
-/// 
+///
 /// For this purpose, the [check_path_in] utility function is provided.
 pub trait Unpack {
     /// The main entrypoint for unpacking an image
