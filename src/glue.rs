@@ -30,6 +30,12 @@ pub enum UnpackError {
 
     #[fail(display = "Cannot extract files outside of root filesystem: {:?}", _0)]
     AttemptedFilesystemTraversal(std::path::PathBuf),
+
+    #[fail(display = "Could not canonicalize path '{:?}': {}", _0, _1)]
+    CanonicalizePath(std::path::PathBuf, std::io::Error),
+
+    #[fail(display = "Could not construct absolute path")]
+    PathAbs(path_abs::Error),
 }
 
 /// Return th path to the file to be deleted, if it is a whiteout file, otherwise None.
@@ -86,6 +92,81 @@ fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::
     path.set_file_name(std::ffi::OsString::from_wide(&wide[4..]));
     Some(path)
 }
+
+/// Utility function to check whether a given path is under a specific base.
+///
+/// Will first attempt to canonicalize the path using [std::fs::canonicalize],
+/// resolving symlinks. Should this fail due to the path not existing,
+/// check_path_in will attempt to canonicalize shorter subpaths first, falling
+/// back to [path_abs::PathAbs] to semantically resolve `..`.
+/// 
+/// # Examples
+/// 
+/// On Unix:
+/// ```
+///# use opencontainers::glue::check_path_in;
+///# #[cfg(unix)]
+///# {
+/// assert_eq!(true, check_path_in("/var/", "/var/empty/foo/bar").unwrap());
+/// assert_eq!(true, check_path_in("/var/", "/lib/../var/empty/foo/bar").unwrap());
+/// assert_eq!(true, check_path_in("/var/empty/bar", "/var/empty/foo/../bar").unwrap());
+/// assert_eq!(false, check_path_in("/lib/", "/var/empty/foo/bar").unwrap());
+/// assert_eq!(false, check_path_in("/var/empty/fo", "/var/empty/foo/bar").unwrap());
+///# }
+/// ```
+/// Or, on Windows:
+/// ```
+///# use opencontainers::glue::check_path_in;
+///# #[cfg(windows)]
+///# {
+/// assert_eq!(true, check_path_in("C:\\windows\\", "C:\\windows\\foo\\bar").unwrap());
+/// assert_eq!(false, check_path_in("C:\\users", "C:\\windows\\foo\\bar").unwrap());
+/// assert_eq!(false, check_path_in("D:\\windows", "C:\\windows\\foo\\bar").unwrap());
+///# }
+/// ```
+pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool, UnpackError> {
+    let mut partially_canonicalized = std::path::PathBuf::new();
+
+    for canonicalize_base in path.as_ref().ancestors() {
+        match canonicalize_base.canonicalize() {
+            Ok(canonicalized) => {
+                // We could canonicalize this far, add the uncanonicalizeable
+                // rest, and stop attempting to canonicalize.
+                partially_canonicalized.push(canonicalized);
+
+                // The uncanonicalized rest is everything that comes after.
+                // This should always succeed, so panic here if it doesn't.
+                let uncanonicalized_rest = path
+                    .as_ref()
+                    .strip_prefix(canonicalize_base)
+                    .expect("strip_prefix could not remove canonicalized base");
+                partially_canonicalized.push(uncanonicalized_rest);
+
+                break;
+            }
+            Err(e) => {
+                // If we get a NotFound error, then the path does not exist.
+                // In this case, we just continue, and retry in the next case.
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    continue;
+                }
+
+                // Otherwise, we have a real error.
+                return Err(UnpackError::CanonicalizePath(canonicalize_base.into(), e));
+            }
+        }
+    }
+
+    // Now that our path is partially canonicalized, we strip `.` entries and
+    // try to semantically resolve `..` values.
+    let ret = path_abs::PathAbs::new(partially_canonicalized)
+        .map_err(UnpackError::PathAbs)?
+        .as_path()
+        .starts_with(base.as_ref());
+
+    Ok(ret)
+}
+
 /// A trait that describes the actions required to create a container's root
 /// filesystem from an image.
 ///
@@ -100,6 +181,8 @@ fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::
 /// Implementations that fail to address this are likely to be vulnerable to
 /// file system traversal vulnerabilities due to the possibility of `..` being
 /// present in the paths contained in the tarball.
+/// 
+/// For this purpose, the [check_path_in] utility function is provided.
 pub trait Unpack {
     /// The main entrypoint for unpacking an image
     ///
