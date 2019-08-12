@@ -18,3 +18,14 @@ pub use image::Image;
 
 pub mod runtime;
 pub use runtime::{Bundle, Runtime};
+
+pub mod glue;
+
+#[derive(Debug, Fail)]
+pub enum Error {
+    #[fail(display = "Registry Error: {}", _0)]
+    RegistryError(distribution::RegistryError),
+
+    #[fail(display = "Error unpacking: {}", _0)]
+    UnpackError(glue::UnpackError),
+}
