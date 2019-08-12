@@ -93,10 +93,16 @@ fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::
     Some(path)
 }
 
-fn partially_canonicalize<P: AsRef<std::path::Path>>(path : P) -> Result<path_abs::PathAbs, UnpackError> {
+fn partially_canonicalize<P: AsRef<std::path::Path>>(
+    path: P,
+) -> Result<path_abs::PathAbs, UnpackError> {
     let mut partially_canonicalized = std::path::PathBuf::new();
 
-    for canonicalize_base in path.as_ref().ancestors() {
+    for canonicalize_base in path_abs::PathAbs::new(path.as_ref())
+        .map_err(UnpackError::PathAbs)?
+        .as_path()
+        .ancestors()
+    {
         match canonicalize_base.canonicalize() {
             Ok(canonicalized) => {
                 // We could canonicalize this far, add the uncanonicalizeable
@@ -105,8 +111,10 @@ fn partially_canonicalize<P: AsRef<std::path::Path>>(path : P) -> Result<path_ab
 
                 // The uncanonicalized rest is everything that comes after.
                 // This should always succeed, so panic here if it doesn't.
-                let uncanonicalized_rest = path
-                    .as_ref()
+                let canonicalized_path =
+                    path_abs::PathAbs::new(path.as_ref()).map_err(UnpackError::PathAbs)?;
+                let uncanonicalized_rest = canonicalized_path
+                    .as_path()
                     .strip_prefix(canonicalize_base)
                     .expect("strip_prefix could not remove canonicalized base");
                 partially_canonicalized.push(uncanonicalized_rest);
@@ -126,10 +134,7 @@ fn partially_canonicalize<P: AsRef<std::path::Path>>(path : P) -> Result<path_ab
         }
     }
 
-    // Now that our path is partially canonicalized, we strip `.` entries and
-    // try to semantically resolve `..` values.
-    path_abs::PathAbs::new(partially_canonicalized)
-        .map_err(UnpackError::PathAbs)
+    path_abs::PathAbs::new(partially_canonicalized).map_err(UnpackError::PathAbs)
 }
 
 /// Utility function to check whether a given path is under a specific base.
@@ -164,9 +169,7 @@ fn partially_canonicalize<P: AsRef<std::path::Path>>(path : P) -> Result<path_ab
 ///# }
 /// ```
 pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool, UnpackError> {
-    let canonicalized: std::path::PathBuf = partially_canonicalize(path)?
-        .as_path()
-        .into();
+    let canonicalized: std::path::PathBuf = partially_canonicalize(path)?.as_path().into();
 
     println!("base: {:?}", base.as_ref());
     println!("canonicalized: {:?}", canonicalized);
