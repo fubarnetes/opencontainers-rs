@@ -93,38 +93,7 @@ fn get_whiteout_path_windows<P: AsRef<std::path::Path>>(path: P) -> Option<std::
     Some(path)
 }
 
-/// Utility function to check whether a given path is under a specific base.
-///
-/// Will first attempt to canonicalize the path using [std::fs::canonicalize],
-/// resolving symlinks. Should this fail due to the path not existing,
-/// check_path_in will attempt to canonicalize shorter subpaths first, falling
-/// back to [path_abs::PathAbs] to semantically resolve `..`.
-///
-/// # Examples
-///
-/// On Unix:
-/// ```
-///# use opencontainers::glue::check_path_in;
-///# #[cfg(unix)]
-///# {
-/// assert_eq!(true, check_path_in("/var/", "/var/empty/foo/bar").unwrap());
-/// assert_eq!(true, check_path_in("/var/", "/lib/../var/empty/foo/bar").unwrap());
-/// assert_eq!(true, check_path_in("/var/empty/bar", "/var/empty/foo/../bar").unwrap());
-/// assert_eq!(false, check_path_in("/lib/", "/var/empty/foo/bar").unwrap());
-/// assert_eq!(false, check_path_in("/var/empty/fo", "/var/empty/foo/bar").unwrap());
-///# }
-/// ```
-/// Or, on Windows:
-/// ```
-///# use opencontainers::glue::check_path_in;
-///# #[cfg(windows)]
-///# {
-/// assert_eq!(true, check_path_in("C:\\windows\\", "C:\\windows\\foo\\bar").unwrap());
-/// assert_eq!(false, check_path_in("C:\\users", "C:\\windows\\foo\\bar").unwrap());
-/// assert_eq!(false, check_path_in("D:\\windows", "C:\\windows\\foo\\bar").unwrap());
-///# }
-/// ```
-pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool, UnpackError> {
+fn partially_canonicalize<P: AsRef<std::path::Path>>(path : P) -> Result<path_abs::PathAbs, UnpackError> {
     let mut partially_canonicalized = std::path::PathBuf::new();
 
     for canonicalize_base in path.as_ref().ancestors() {
@@ -159,15 +128,50 @@ pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool
 
     // Now that our path is partially canonicalized, we strip `.` entries and
     // try to semantically resolve `..` values.
-    let canonicalized: std::path::PathBuf = path_abs::PathAbs::new(partially_canonicalized)
-        .map_err(UnpackError::PathAbs)?
+    path_abs::PathAbs::new(partially_canonicalized)
+        .map_err(UnpackError::PathAbs)
+}
+
+/// Utility function to check whether a given path is under a specific base.
+///
+/// Will first attempt to canonicalize the path using [std::fs::canonicalize],
+/// resolving symlinks. Should this fail due to the path not existing,
+/// check_path_in will attempt to canonicalize shorter subpaths first, falling
+/// back to [path_abs::PathAbs] to semantically resolve `..`.
+///
+/// # Examples
+///
+/// On Unix:
+/// ```
+///# use opencontainers::glue::check_path_in;
+///# #[cfg(unix)]
+///# {
+/// assert_eq!(true, check_path_in("/var/", "/var/empty/foo/bar").unwrap());
+/// assert_eq!(true, check_path_in("/var/", "/lib/../var/empty/foo/bar").unwrap());
+/// assert_eq!(true, check_path_in("/var/empty/bar", "/var/empty/foo/../bar").unwrap());
+/// assert_eq!(false, check_path_in("/lib/", "/var/empty/foo/bar").unwrap());
+/// assert_eq!(false, check_path_in("/var/empty/fo", "/var/empty/foo/bar").unwrap());
+///# }
+/// ```
+/// Or, on Windows:
+/// ```
+///# use opencontainers::glue::check_path_in;
+///# #[cfg(windows)]
+///# {
+/// assert_eq!(true, check_path_in("C:\\windows\\", "C:\\windows\\foo\\bar").unwrap());
+/// assert_eq!(false, check_path_in("C:\\users", "C:\\windows\\foo\\bar").unwrap());
+/// assert_eq!(false, check_path_in("D:\\windows", "C:\\windows\\foo\\bar").unwrap());
+///# }
+/// ```
+pub fn check_path_in<P: AsRef<std::path::Path>>(base: P, path: P) -> Result<bool, UnpackError> {
+    let canonicalized: std::path::PathBuf = partially_canonicalize(path)?
         .as_path()
         .into();
 
     println!("base: {:?}", base.as_ref());
     println!("canonicalized: {:?}", canonicalized);
 
-    Ok(canonicalized.starts_with(base.as_ref()))
+    Ok(canonicalized.starts_with(partially_canonicalize(base)?.as_path()))
 }
 
 /// A trait that describes the actions required to create a container's root
