@@ -6,6 +6,17 @@ pub mod spec;
 use manifest::Digest;
 pub use manifest::ManifestV2;
 
+/// Trait implementing an image storage, such as a registry.
+// TODO: Implement this for the registry, and make the [Image] struct
+// use this instead of a [Registry].
+pub trait ImageStorage {
+    fn get_manifest(&self, name: &str, reference: &str) -> Result<ManifestV2, RegistryError>;
+    // FIXME: Find a good abstraction around the reqwest::Response here.
+    fn get_blob(&self, digest: &Digest) -> Result<reqwest::Response, RegistryError>;
+
+    // TODO: add put methods.
+}
+
 #[derive(Debug)]
 pub struct Image<'a> {
     registry: &'a Registry,
